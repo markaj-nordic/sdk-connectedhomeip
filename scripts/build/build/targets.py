@@ -15,29 +15,30 @@
 import os
 import re
 from itertools import combinations
-from typing import List, Any, Optional
-
-from .target import BuildTarget, TargetPart
+from typing import Any, List, Optional
 
 from builders.ameba import AmebaApp, AmebaBoard, AmebaBuilder
 from builders.android import AndroidApp, AndroidBoard, AndroidBuilder
+from builders.bouffalolab import BouffalolabApp, BouffalolabBoard, BouffalolabBuilder
 from builders.cc13x2x7_26x2x7 import cc13x2x7_26x2x7App, cc13x2x7_26x2x7Builder
+from builders.cc32xx import cc32xxApp, cc32xxBuilder
 from builders.cyw30739 import Cyw30739App, Cyw30739Board, Cyw30739Builder
 from builders.efr32 import Efr32App, Efr32Board, Efr32Builder
 from builders.esp32 import Esp32App, Esp32Board, Esp32Builder
+from builders.genio import GenioApp, GenioBuilder
 from builders.host import HostApp, HostBoard, HostBuilder, HostCryptoLibrary
+from builders.imx import IMXApp, IMXBuilder
 from builders.infineon import InfineonApp, InfineonBoard, InfineonBuilder
 from builders.k32w import K32WApp, K32WBuilder
 from builders.mbed import MbedApp, MbedBoard, MbedBuilder, MbedProfile
 from builders.mw320 import MW320App, MW320Builder
 from builders.nrf import NrfApp, NrfBoard, NrfConnectBuilder
+from builders.openiotsdk import OpenIotSdkApp, OpenIotSdkBuilder
 from builders.qpg import QpgApp, QpgBoard, QpgBuilder
 from builders.telink import TelinkApp, TelinkBoard, TelinkBuilder
 from builders.tizen import TizenApp, TizenBoard, TizenBuilder
-from builders.bouffalolab import BouffalolabApp, BouffalolabBoard, BouffalolabBuilder
-from builders.imx import IMXApp, IMXBuilder
-from builders.genio import GenioApp, GenioBuilder
-from builders.openiotsdk import OpenIotSdkApp, OpenIotSdkBuilder
+
+from .target import BuildTarget, TargetPart
 
 
 def BuildHostTestRunnerTarget():
@@ -147,6 +148,7 @@ def BuildHostTarget():
     target.AppendModifier('clang', use_clang=True)
     target.AppendModifier('test', extra_tests=True)
     target.AppendModifier('rpc', enable_rpcs=True)
+    target.AppendModifier('with-ui', imgui_ui=True)
 
     return target
 
@@ -380,6 +382,8 @@ def BuildK32WTarget():
     target.AppendModifier(name="no-ota", disable_ota=True)
     target.AppendModifier(name="low-power", low_power=True).OnlyIfRe("-nologs")
     target.AppendModifier(name="nologs", disable_logs=True)
+    target.AppendModifier(name="crypto-platform", crypto_platform=True)
+    target.AppendModifier(name="tokenizer", tokenizer=True).ExceptIfRe("-nologs")
 
     return target
 
@@ -403,9 +407,20 @@ def Buildcc13x2x7_26x2x7Target():
     return target
 
 
+def Buildcc32xxTarget():
+    target = BuildTarget('cc32xx', cc32xxBuilder)
+
+    # apps
+    target.AppendFixedTargets([
+        TargetPart('lock', app=cc32xxApp.LOCK),
+
+    ])
+
+    return target
+
+
 def BuildCyw30739Target():
     target = BuildTarget('cyw30739', Cyw30739Builder)
-
     # board
     target.AppendFixedTargets([
         TargetPart('cyw930739m2evb_01', board=Cyw30739Board.CYW930739M2EVB_01),
@@ -527,6 +542,7 @@ def BuildTelinkTarget():
     target.AppendFixedTargets([
         TargetPart('all-clusters', app=TelinkApp.ALL_CLUSTERS),
         TargetPart('all-clusters-minimal', app=TelinkApp.ALL_CLUSTERS_MINIMAL),
+        TargetPart('contact-sensor', app=TelinkApp.CONTACT_SENSOR),
         TargetPart('light', app=TelinkApp.LIGHT),
         TargetPart('light-switch', app=TelinkApp.SWITCH),
         TargetPart('ota-requestor', app=TelinkApp.OTA_REQUESTOR),
@@ -552,6 +568,7 @@ BUILD_TARGETS = [
     BuildAndroidTarget(),
     BuildBouffalolabTarget(),
     Buildcc13x2x7_26x2x7Target(),
+    Buildcc32xxTarget(),
     BuildCyw30739Target(),
     BuildEfr32Target(),
     BuildEsp32Target(),

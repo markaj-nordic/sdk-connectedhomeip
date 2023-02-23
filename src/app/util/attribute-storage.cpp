@@ -1,6 +1,6 @@
 /**
  *
- *    Copyright (c) 2020 Project CHIP Authors
+ *    Copyright (c) 2020-2023 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
 #include <app/reporting/reporting.h>
 #include <app/util/af.h>
 #include <app/util/attribute-storage.h>
+#include <app/util/config.h>
 #include <app/util/generic-callbacks.h>
 #include <lib/support/CodeUtils.h>
 #include <lib/support/logging/CHIPLogging.h>
@@ -81,6 +82,10 @@ GENERATED_FUNCTION_ARRAYS
 #ifdef GENERATED_COMMANDS
 constexpr const chip::CommandId generatedCommands[] = GENERATED_COMMANDS;
 #endif // GENERATED_COMMANDS
+
+#if (defined(GENERATED_EVENTS) && (GENERATED_EVENT_COUNT > 0))
+constexpr const chip::EventId generatedEvents[] = GENERATED_EVENTS;
+#endif // GENERATED_EVENTS
 
 constexpr const EmberAfAttributeMetadata generatedAttributes[]      = GENERATED_ATTRIBUTES;
 constexpr const EmberAfCluster generatedClusters[]                  = GENERATED_CLUSTERS;
@@ -322,7 +327,11 @@ EmberAfStatus emAfClusterPreAttributeChangedCallback(const app::ConcreteAttribut
     const EmberAfCluster * cluster = emberAfFindServerCluster(attributePath.mEndpointId, attributePath.mClusterId);
     if (cluster == nullptr)
     {
-        return EMBER_ZCL_STATUS_UNSUPPORTED_ATTRIBUTE;
+        if (!emberAfEndpointIsEnabled(attributePath.mEndpointId))
+        {
+            return EMBER_ZCL_STATUS_UNSUPPORTED_ENDPOINT;
+        }
+        return EMBER_ZCL_STATUS_UNSUPPORTED_CLUSTER;
     }
 
     EmberAfStatus status = EMBER_ZCL_STATUS_SUCCESS;
@@ -591,23 +600,27 @@ EmberAfStatus emAfReadOrWriteAttribute(EmberAfAttributeSearchRecord * attRecord,
                             }
                         }
                     }
+
+                    // Attribute is not in the cluster.
+                    return EMBER_ZCL_STATUS_UNSUPPORTED_ATTRIBUTE;
                 }
-                else
-                { // Not the cluster we are looking for
-                    attributeOffsetIndex = static_cast<uint16_t>(attributeOffsetIndex + cluster->clusterSize);
-                }
+
+                // Not the cluster we are looking for
+                attributeOffsetIndex = static_cast<uint16_t>(attributeOffsetIndex + cluster->clusterSize);
             }
+
+            // Cluster is not in the endpoint.
+            return EMBER_ZCL_STATUS_UNSUPPORTED_CLUSTER;
         }
-        else
-        { // Not the endpoint we are looking for
-            // Dynamic endpoints are external and don't factor into storage size
-            if (!isDynamicEndpoint)
-            {
-                attributeOffsetIndex = static_cast<uint16_t>(attributeOffsetIndex + emAfEndpoints[ep].endpointType->endpointSize);
-            }
+
+        // Not the endpoint we are looking for
+        // Dynamic endpoints are external and don't factor into storage size
+        if (!isDynamicEndpoint)
+        {
+            attributeOffsetIndex = static_cast<uint16_t>(attributeOffsetIndex + emAfEndpoints[ep].endpointType->endpointSize);
         }
     }
-    return EMBER_ZCL_STATUS_UNSUPPORTED_ATTRIBUTE; // Sorry, attribute was not found.
+    return EMBER_ZCL_STATUS_UNSUPPORTED_ENDPOINT; // Sorry, endpoint was not found.
 }
 
 const EmberAfEndpointType * emberAfFindEndpointType(chip::EndpointId endpointId)
@@ -673,6 +686,18 @@ uint8_t emberAfClusterIndex(EndpointId endpoint, ClusterId clusterId, EmberAfClu
 bool emberAfContainsServer(EndpointId endpoint, ClusterId clusterId)
 {
     return (emberAfFindServerCluster(endpoint, clusterId) != nullptr);
+}
+
+// Returns whether the given endpoint has the client of the given cluster on it.
+bool emberAfContainsClient(EndpointId endpoint, ClusterId clusterId)
+{
+    uint16_t ep = emberAfIndexFromEndpoint(endpoint);
+    if (ep == kEmberInvalidEndpointIndex)
+    {
+        return false;
+    }
+
+    return (emberAfFindClusterInType(emAfEndpoints[ep].endpointType, clusterId, CLUSTER_MASK_CLIENT) != nullptr);
 }
 
 // This will find the first server that has the clusterId given from the index of endpoint.

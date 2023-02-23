@@ -13,9 +13,9 @@
 # limitations under the License.
 
 import os
-from enum import Enum, auto
 import shlex
 import subprocess
+from enum import Enum, auto
 
 from .gn import GnBuilder
 
@@ -201,7 +201,8 @@ class Efr32Builder(GnBuilder):
                 'use_silabs_thread_lib=true chip_openthread_target="../silabs:ot-efr32-cert" use_thread_coap_lib=true openthread_external_platform=""')
 
         if not no_version:
-            shortCommitSha = subprocess.check_output(['git', 'describe', '--always', '--dirty']).decode('ascii').strip()
+            shortCommitSha = subprocess.check_output(
+                ['git', 'describe', '--always', '--dirty', '--exclude', '*']).decode('ascii').strip()
             branchName = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).decode('ascii').strip()
             self.extra_gn_options.append(
                 'sl_matter_version_str="v1.0-%s-%s"' % (branchName, shortCommitSha))
@@ -241,6 +242,13 @@ class Efr32Builder(GnBuilder):
             cmd += ['--dotfile=%s' % self.dotfile]
 
         extra_args = self.GnBuildArgs()
+
+        if self.options.pw_command_launcher:
+            extra_args.append('pw_command_launcher="%s"' % self.options.pw_command_launcher)
+
+        if self.options.pregen_dir:
+            extra_args.append('chip_code_pre_generated_directory="%s"' % self.options.pregen_dir)
+
         if extra_args:
             cmd += ['--args=%s' % ' '.join(extra_args)]
 

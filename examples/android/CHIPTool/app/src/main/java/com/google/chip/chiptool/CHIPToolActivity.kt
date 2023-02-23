@@ -28,7 +28,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
-import com.google.chip.chiptool.NetworkCredentialsParcelable
 import chip.setuppayload.SetupPayload
 import chip.setuppayload.SetupPayloadParser
 import chip.setuppayload.SetupPayloadParser.UnrecognizedQrCodeException
@@ -44,6 +43,7 @@ import com.google.chip.chiptool.provisioning.AddressCommissioningFragment
 import com.google.chip.chiptool.provisioning.DeviceProvisioningFragment
 import com.google.chip.chiptool.provisioning.EnterNetworkFragment
 import com.google.chip.chiptool.provisioning.ProvisionNetworkType
+import com.google.chip.chiptool.provisioning.UnpairDeviceFragment
 import com.google.chip.chiptool.setuppayloadscanner.BarcodeFragment
 import com.google.chip.chiptool.setuppayloadscanner.CHIPDeviceDetailsFragment
 import com.google.chip.chiptool.setuppayloadscanner.CHIPDeviceInfo
@@ -70,7 +70,7 @@ class CHIPToolActivity :
       val fragment = SelectActionFragment.newInstance()
       supportFragmentManager
           .beginTransaction()
-          .add(R.id.fragment_container, fragment, fragment.javaClass.simpleName)
+          .add(R.id.nav_host_fragment, fragment, fragment.javaClass.simpleName)
           .commit()
     } else {
       networkType =
@@ -115,26 +115,16 @@ class CHIPToolActivity :
     showFragment(SelectActionFragment.newInstance(), false)
   }
 
-  override fun handleScanQrCodeClicked() {
-    showFragment(BarcodeFragment.newInstance())
-  }
-
-  override fun onProvisionWiFiCredentialsClicked() {
-    networkType = ProvisionNetworkType.WIFI
-    showFragment(BarcodeFragment.newInstance(), false)
-  }
-
-  override fun onProvisionThreadCredentialsClicked() {
-    networkType = ProvisionNetworkType.THREAD
-    showFragment(BarcodeFragment.newInstance(), false)
-  }
-
   override fun onShowDeviceAddressInput() {
     showFragment(AddressCommissioningFragment.newInstance(), false)
   }
 
   override fun onNetworkCredentialsEntered(networkCredentials: NetworkCredentialsParcelable) {
     showFragment(DeviceProvisioningFragment.newInstance(deviceInfo!!, networkCredentials))
+  }
+
+  override fun handleScanQrCodeClicked() {
+    showFragment(BarcodeFragment.newInstance(), false)
   }
 
   override fun handleClusterInteractionClicked() {
@@ -178,23 +168,28 @@ class CHIPToolActivity :
     startActivity(redirectIntent)
   }
 
-  override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-    super.onActivityResult(requestCode, resultCode, data)
-
-    if (requestCode == REQUEST_CODE_COMMISSIONING) {
-      // Simply ignore the commissioning result.
-      // TODO: tracking commissioned devices.
-    }
+  override fun handleProvisionWiFiCredentialsClicked() {
+    networkType = ProvisionNetworkType.WIFI
+    showFragment(BarcodeFragment.newInstance(), false)
   }
 
-  override fun handleCustomFlowClicked() {
-    showFragment(BarcodeFragment.newInstance())
+  override fun handleProvisionThreadCredentialsClicked() {
+    networkType = ProvisionNetworkType.THREAD
+    showFragment(BarcodeFragment.newInstance(), false)
+  }
+
+  override fun handleProvisionCustomFlowClicked() {
+    showFragment(BarcodeFragment.newInstance(), false)
+  }
+
+  override fun handleUnpairDeviceClicked() {
+    showFragment(UnpairDeviceFragment.newInstance())
   }
 
   private fun showFragment(fragment: Fragment, showOnBack: Boolean = true) {
     val fragmentTransaction = supportFragmentManager
         .beginTransaction()
-        .replace(R.id.fragment_container, fragment, fragment.javaClass.simpleName)
+        .replace(R.id.nav_host_fragment, fragment, fragment.javaClass.simpleName)
 
     if (showOnBack) {
       fragmentTransaction.addToBackStack(null)

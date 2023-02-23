@@ -26,6 +26,7 @@
 #include <app/server/OnboardingCodesUtil.h>
 #include <app/server/Server.h>
 #include <crypto/CHIPCryptoPAL.h>
+#include <crypto/RawKeySessionKeystore.h>
 #include <lib/core/CHIPError.h>
 #include <lib/core/NodeId.h>
 #include <lib/support/logging/CHIPLogging.h>
@@ -122,6 +123,7 @@ MyServerStorageDelegate gServerStorage;
 ExampleOperationalCredentialsIssuer gOpCredsIssuer;
 NodeId gLocalId = kMaxOperationalNodeId;
 Credentials::GroupDataProviderImpl gGroupDataProvider;
+Crypto::RawKeySessionKeystore gSessionKeystore;
 
 CHIP_ERROR InitCommissioner(uint16_t commissionerPort, uint16_t udcListenPort, FabricId fabricId)
 {
@@ -132,8 +134,10 @@ CHIP_ERROR InitCommissioner(uint16_t commissionerPort, uint16_t udcListenPort, F
     factoryParams.listenPort               = commissionerPort;
     factoryParams.fabricIndependentStorage = &gServerStorage;
     factoryParams.fabricTable              = &Server::GetInstance().GetFabricTable();
+    factoryParams.sessionKeystore          = &gSessionKeystore;
 
     gGroupDataProvider.SetStorageDelegate(&gServerStorage);
+    gGroupDataProvider.SetSessionKeystore(factoryParams.sessionKeystore);
     ReturnErrorOnFailure(gGroupDataProvider.Init());
     factoryParams.groupDataProvider = &gGroupDataProvider;
 
@@ -252,7 +256,7 @@ public:
 private:
 #if CHIP_DEVICE_CONFIG_APP_PLATFORM_ENABLED
     static void OnDeviceConnectedFn(void * context, chip::Messaging::ExchangeManager & exchangeMgr,
-                                    chip::SessionHandle & sessionHandle);
+                                    const chip::SessionHandle & sessionHandle);
     static void OnDeviceConnectionFailureFn(void * context, const ScopedNodeId & peerId, CHIP_ERROR error);
 
     chip::Callback::Callback<chip::OnDeviceConnected> mOnDeviceConnectedCallback;
@@ -357,7 +361,8 @@ void PairingCommand::OnReadCommissioningInfo(const ReadCommissioningInfo & info)
 
 #if CHIP_DEVICE_CONFIG_APP_PLATFORM_ENABLED
 
-void PairingCommand::OnDeviceConnectedFn(void * context, Messaging::ExchangeManager & exchangeMgr, SessionHandle & sessionHandle)
+void PairingCommand::OnDeviceConnectedFn(void * context, Messaging::ExchangeManager & exchangeMgr,
+                                         const SessionHandle & sessionHandle)
 {
     ChipLogProgress(Controller, "OnDeviceConnectedFn");
     CommissionerDiscoveryController * cdc = GetCommissionerDiscoveryController();

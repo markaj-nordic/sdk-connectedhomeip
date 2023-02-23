@@ -57,7 +57,7 @@ using namespace ::chip::DeviceLayer;
 #include "SiWx917DeviceDataProvider.h"
 
 #if EFR32_OTA_ENABLED
-void EFR32MatterConfig::InitOTARequestorHandler(System::Layer * systemLayer, void * appState)
+void SI917MatterConfig::InitOTARequestorHandler(System::Layer * systemLayer, void * appState)
 {
 #if 0 // TODO : OTA is not planned now for CCP
     OTAConfig::Init();
@@ -171,5 +171,5 @@ extern "C" void vApplicationIdleHook(void)
     // FreeRTOS Idle callback
 
     // Check CHIP Config nvm3 and repack flash if necessary.
-    Internal::SILABSConfig::RepackNvm3Flash();
+    Internal::SilabsConfig::RepackNvm3Flash();
 }

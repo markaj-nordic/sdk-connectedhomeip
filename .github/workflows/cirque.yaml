@@ -17,6 +17,7 @@ name: Cirque
 on:
     push:
     pull_request:
+    merge_group:
     workflow_dispatch:
 
 concurrency:
@@ -29,7 +30,7 @@ jobs:
         timeout-minutes: 90
 
         env:
-            DOCKER_RUN_VERSION: 0.6.18
+            DOCKER_RUN_VERSION: 0.6.35
             GITHUB_CACHE_PATH: /tmp/cirque-cache/
 
         runs-on: ubuntu-latest
@@ -38,7 +39,7 @@ jobs:
         # need to run with privilege, which isn't supported by job.XXX.contaner
         #  https://github.com/actions/container-action/issues/2
         #         container:
-        #             image: connectedhomeip/chip-build-cirque:0.6.18
+        #             image: connectedhomeip/chip-build-cirque:0.6.35
         #             volumes:
         #                 - "/tmp:/tmp"
         #                 - "/dev/pts:/dev/pts"
@@ -96,7 +97,7 @@ jobs:
                     -- scripts/tests/cirque_tests.sh bootstrap
             - name: Artifact suffix
               id: outsuffix
-              uses: haya14busa/action-cond@v1.0.0
+              uses: haya14busa/action-cond@v1
               if: ${{ !env.ACT }}
               with:
                   cond: ${{ github.event.pull_request.number == '' }}
