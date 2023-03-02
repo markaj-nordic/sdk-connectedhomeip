@@ -51,5 +51,39 @@ static_library("light") {
     "${chip_root}/third_party/imgui",
   ]
 
+  # TODO: this is because on-off-server.h is generally only available
+  #       in the app and we do not want to directly bind to lighting-app
+  check_includes = false
+
+  public_configs = [ "${chip_root}/src:includes" ]
+}
+
+static_library("boolean_state") {
+  sources = [
+    "boolean_state.cpp",
+    "boolean_state.h",
+  ]
+
+  deps = [
+    ":windows",
+    "${chip_root}/src/app/common:cluster-objects",
+    "${chip_root}/third_party/imgui",
+  ]
+
+  public_configs = [ "${chip_root}/src:includes" ]
+}
+
+static_library("occupancy_sensing") {
+  sources = [
+    "occupancy_sensing.cpp",
+    "occupancy_sensing.h",
+  ]
+
+  deps = [
+    ":windows",
+    "${chip_root}/src/app/common:cluster-objects",
+    "${chip_root}/third_party/imgui",
+  ]
+
   public_configs = [ "${chip_root}/src:includes" ]
 }

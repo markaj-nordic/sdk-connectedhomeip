@@ -27,7 +27,6 @@
 #include <app-common/zap-generated/ids/Clusters.h>
 #include <app/EventLogging.h>
 #include <app/server/Server.h>
-#include <app/util/af-event.h>
 #include <app/util/af.h>
 #include <app/util/error-mapping.h>
 #include <cinttypes>
@@ -46,10 +45,7 @@ using chip::Protocols::InteractionModel::Status;
 static constexpr uint8_t DOOR_LOCK_SCHEDULE_MAX_HOUR   = 23;
 static constexpr uint8_t DOOR_LOCK_SCHEDULE_MAX_MINUTE = 59;
 
-// emberEventControlSetDelayMS() uses uint32_t for timeout in milliseconds but doesn't accept
-// values more than MAX(UINT32) / 2. This is internal value. Thus, lets limit our relock timeout
-// in seconds with the appropriate maximum to ensure that delay setting won't fail.
-static constexpr uint32_t DOOR_LOCK_MAX_LOCK_TIMEOUT_SEC = MAX_INT32U_VALUE / (2 * MILLISECOND_TICKS_PER_SECOND);
+static constexpr uint32_t DOOR_LOCK_MAX_LOCK_TIMEOUT_SEC = MAX_INT32U_VALUE / MILLISECOND_TICKS_PER_SECOND;
 
 DoorLockServer DoorLockServer::instance;
 
@@ -704,6 +700,12 @@ void DoorLockServer::setCredentialCommandHandler(
         // if userIndex is NULL then we're changing the programming user PIN
         if (userIndex.IsNull())
         {
+            if (!userStatus.IsNull() || userType != UserTypeEnum::kProgrammingUser)
+            {
+                emberAfDoorLockClusterPrintln("[SetCredential] Unable to modify programming PIN: invalid argument "
+                                              "[endpointId=%d,credentialIndex=%d]",
+                                              commandPath.mEndpointId, credentialIndex);
+            }
             status = modifyProgrammingPIN(commandPath.mEndpointId, fabricIdx, sourceNodeId, credentialIndex, credentialType,
                                           existingCredential, credentialData);
             sendSetCredentialResponse(commandObj, commandPath, status, 0, nextAvailableCredentialSlot);
@@ -2249,7 +2251,16 @@ DlStatus DoorLockServer::createCredential(chip::EndpointId endpointId, chip::Fab
     }
     else
     {
-        // appclusters, 5.2.4.40: if user index is NULL, we should try to modify the existing user
+        // appclusters, 5.2.4.40: if user index is NULL, we should try to modify
+        // the existing user.  In this case userStatus and userType shall both
+        // be null.
+        if (!userStatus.IsNull() || !userType.IsNull())
+        {
+            emberAfDoorLockClusterPrintln("[SetCredential] Unable to add credential: invalid arguments "
+                                          "[endpointId=%d,credentialIndex=%d,credentialType=%u]",
+                                          endpointId, credentialIndex, to_underlying(credentialType));
+            return DlStatus::kInvalidField;
+        }
         status = createNewCredentialAndAddItToUser(endpointId, creatorFabricIdx, userIndex.Value(), credential, credentialData);
     }
 
@@ -2318,7 +2329,7 @@ DlStatus DoorLockServer::modifyCredential(chip::EndpointId endpointId, chip::Fab
 {
 
     // appclusters, 5.2.4.40: when modifying a credential, userStatus and userType shall both be NULL.
-    if (!userStatus.IsNull() || (!userType.IsNull() && UserTypeEnum::kProgrammingUser != userType.Value()))
+    if (!userStatus.IsNull() || !userType.IsNull())
     {
         emberAfDoorLockClusterPrintln("[SetCredential] Unable to modify the credential: invalid arguments "
                                       "[endpointId=%d,credentialIndex=%d,credentialType=%u]",
@@ -3049,9 +3060,7 @@ LockDataTypeEnum DoorLockServer::credentialTypeToLockDataType(CredentialTypeEnum
     case CredentialTypeEnum::kFingerVein:
         return LockDataTypeEnum::kFingerVein;
     case CredentialTypeEnum::kFace:
-        // So far there's no distinct data type for face credentials.
-        // See https://github.com/CHIP-Specifications/connectedhomeip-spec/issues/6272
-        return LockDataTypeEnum::kUnspecified;
+        return LockDataTypeEnum::kFace;
     case CredentialTypeEnum::kUnknownEnumValue:
         return LockDataTypeEnum::kUnspecified;
     }
@@ -3396,18 +3405,17 @@ void DoorLockServer::SendLockOperationEvent(chip::EndpointId endpointId, LockOpe
 
 void DoorLockServer::ScheduleAutoRelock(chip::EndpointId endpointId, uint32_t timeoutSec)
 {
-    emberEventControlSetInactive(&AutolockEvent);
-
-    AutolockEvent.endpoint = endpointId;
-    AutolockEvent.callback = DoorLockOnAutoRelockCallback;
-
     uint32_t timeoutMs =
         (DOOR_LOCK_MAX_LOCK_TIMEOUT_SEC >= timeoutSec) ? timeoutSec * MILLISECOND_TICKS_PER_SECOND : DOOR_LOCK_MAX_LOCK_TIMEOUT_SEC;
-    auto err = emberEventControlSetDelayMS(&AutolockEvent, timeoutMs);
 
-    if (EMBER_SUCCESS != err)
+    CHIP_ERROR err =
+        DeviceLayer::SystemLayer().StartTimer(chip::System::Clock::Milliseconds32(timeoutMs), DoorLockOnAutoRelockCallback,
+                                              reinterpret_cast<void *>(static_cast<uintptr_t>(endpointId)));
+
+    if (err != CHIP_NO_ERROR)
     {
-        ChipLogError(Zcl, "Failed to schedule autorelock: timeout=%" PRIu32 ", status=0x%x", timeoutSec, err);
+        ChipLogError(Zcl, "Failed to schedule autorelock: timeout=%" PRIu32 ", status=%" CHIP_ERROR_FORMAT, timeoutSec,
+                     err.Format());
     }
 }
 
@@ -3766,13 +3774,21 @@ void MatterDoorLockPluginServerInitCallback()
 
 void MatterDoorLockClusterServerAttributeChangedCallback(const app::ConcreteAttributePath & attributePath) {}
 
+void MatterDoorLockClusterServerShutdownCallback(EndpointId endpoint)
+{
+    emberAfDoorLockClusterPrintln("Shuting door lock server cluster on endpoint %d", endpoint);
+
+    DeviceLayer::SystemLayer().CancelTimer(DoorLockServer::DoorLockOnAutoRelockCallback,
+                                           reinterpret_cast<void *>(static_cast<uintptr_t>(endpoint)));
+}
+
 // =============================================================================
 // Timer callbacks
 // =============================================================================
 
-void DoorLockServer::DoorLockOnAutoRelockCallback(chip::EndpointId endpointId)
+void DoorLockServer::DoorLockOnAutoRelockCallback(System::Layer *, void * callbackContext)
 {
-    emberEventControlSetInactive(&DoorLockServer::Instance().AutolockEvent);
+    auto endpointId = static_cast<EndpointId>(reinterpret_cast<uintptr_t>(callbackContext));
 
     Nullable<DlLockState> lockState;
     if (Attributes::LockState::Get(endpointId, lockState) != EMBER_ZCL_STATUS_SUCCESS || lockState.IsNull() ||

@@ -447,7 +447,7 @@ server cluster TimeFormatLocalization = 44 {
 }
 
 server cluster UnitLocalization = 45 {
-  enum TempUnit : ENUM8 {
+  enum TempUnitEnum : ENUM8 {
     kFahrenheit = 0;
     kCelsius = 1;
     kKelvin = 2;
@@ -457,7 +457,7 @@ server cluster UnitLocalization = 45 {
     kTemperatureUnit = 0x1;
   }
 
-  attribute TempUnit temperatureUnit = 0;
+  attribute TempUnitEnum temperatureUnit = 0;
   readonly attribute command_id generatedCommandList[] = 65528;
   readonly attribute command_id acceptedCommandList[] = 65529;
   readonly attribute event_id eventList[] = 65530;
@@ -1572,7 +1572,7 @@ server cluster OperationalCredentials = 62 {
 }
 
 server cluster GroupKeyManagement = 63 {
-  enum GroupKeySecurityPolicy : ENUM8 {
+  enum GroupKeySecurityPolicyEnum : ENUM8 {
     kTrustFirst = 0;
     kCacheAndSync = 1;
   }
@@ -1592,7 +1592,7 @@ server cluster GroupKeyManagement = 63 {
 
   struct GroupKeySetStruct {
     int16u groupKeySetID = 0;
-    GroupKeySecurityPolicy groupKeySecurityPolicy = 1;
+    GroupKeySecurityPolicyEnum groupKeySecurityPolicy = 1;
     nullable octet_string<16> epochKey0 = 2;
     nullable epoch_us epochStartTime0 = 3;
     nullable octet_string<16> epochKey1 = 4;
@@ -2398,9 +2398,6 @@ endpoint 0 {
   }
 
   server cluster GeneralDiagnostics {
-    emits event HardwareFaultChange;
-    emits event RadioFaultChange;
-    emits event NetworkFaultChange;
     emits event BootReason;
     callback attribute networkInterfaces;
     callback attribute rebootCount;
