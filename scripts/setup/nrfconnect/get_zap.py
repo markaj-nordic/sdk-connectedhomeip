@@ -34,12 +34,12 @@ from zipfile import ZipFile
 
 def get_zap_recommended_version():
     matter_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.normpath('../../..')))
-    zap_version_file = os.path.join(matter_root, 'scripts/tools/zap/zap_execution.py')
+    zap_version_file = os.path.join(matter_root, 'integrations/docker/images/chip-build/Dockerfile')
 
     try:
         with open(os.path.join(zap_version_file), 'r') as f:
             file_content = f.read()
-            result = re.findall(r'MIN_ZAP_VERSION = \'(.*)\'\s', file_content)
+            result = re.findall(r'ENV ZAP_VERSION=(.*)\s', file_content)
 
             if len(result) == 0:
                 raise RuntimeError("Couldn't find pattern matching ZAP_VERSION.")
@@ -70,20 +70,7 @@ def download_recommended_zap_package(version, package_name, location):
     try:
         print("Trying to download ZAP tool package matching your system and recommended version.")
         os.makedirs(location, exist_ok=True)
-
-        # The version format is year.month.day, where month and day may be 1 or 2 digits length.
-        # The URL used for package download requires format YYYY.MM.DD.
-        # To assure proper format, the code splits version groups and conditionally prepends day and months with 0s.
-        splitted_version = version.split('.')
-
-        if len(splitted_version) != 3:
-            raise RuntimeError("ZAP version requested to download has invalid format.")
-
-        month = f'{int(splitted_version[1]):02d}'
-        day = f'{int(splitted_version[2]):02d}'
-        merged_version = f"{splitted_version[0]}.{month}.{day}"
-
-        url = f"https://github.com/project-chip/zap/releases/download/v{merged_version}-nightly/{package_name}.zip"
+        url = f"https://github.com/project-chip/zap/releases/download/{version}/{package_name}.zip"
         print(f"Downloading {url} into {os.path.join(location, f'{package_name}.zip')}")
         response = wget.download(url, out=location)
         print("\n")
@@ -158,15 +145,17 @@ def main():
 
     location = os.path.abspath(args.location)
     zap_recommended_version = get_zap_recommended_version()
+    # Assuming format vYYYY.MM.DD-nightly, extract only date without v prefix and potential suffix
+    zap_recommended_version_number = zap_recommended_version[1:11]
     zap_current_version = get_zap_current_version()
 
     if zap_current_version == None:
         print("No ZAP tool version was found installed on this device.")
         install_zap_package(zap_recommended_version, location, args.overwrite)
-    elif zap_current_version == zap_recommended_version:
+    elif zap_current_version == zap_recommended_version_number:
         print(f"Your currenly installed ZAP tool version: {zap_current_version} matches the recommended one.")
     else:
-        print(f"Your currenly installed ZAP tool version: {zap_current_version} does not match the recommended one: {zap_recommended_version}")
+        print(f"Your currenly installed ZAP tool version: {zap_current_version} does not match the recommended one: {zap_recommended_version_number}")
         install_zap_package(zap_recommended_version, location, args.overwrite)
 
 
