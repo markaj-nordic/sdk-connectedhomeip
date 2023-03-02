@@ -33,11 +33,8 @@ choice MATTER_LOG_LEVEL_CHOICE
 	default MATTER_LOG_LEVEL_DBG
 endchoice
 
-config CHIP_APP_LOG_LEVEL
-    default 4 # debug
-
 config LOG_DEFAULT_LEVEL
-    default 2 # warning
+    default 2
 
 config CHIP_LOG_SIZE_OPTIMIZATION
     default y
