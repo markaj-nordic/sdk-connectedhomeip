@@ -1565,10 +1565,28 @@ exit:
     return err;
 }
 
+#define SuccessOrExitCustom(expr)                                                                                                  \
+    SuccessOrExitCustomError = expr;                                                                                               \
+    if ((SuccessOrExitCustomError) != CHIP_NO_ERROR)                                                                               \
+    {                                                                                                                              \
+        ChipLogError(SecureChannel, "$$$$$$$ " #expr " $$$$$$$");                                                                  \
+    }                                                                                                                              \
+    SuccessOrExit(SuccessOrExitCustomError)
+
+#define VerifyOrExitCustom(expr, ec)                                                                                               \
+    VerifyOrExitCustomRes = expr;                                                                                                  \
+    if (!(VerifyOrExitCustomRes))                                                                                                  \
+    {                                                                                                                              \
+        ChipLogError(SecureChannel, "$$$$$$$ " #expr " $$$$$$$");                                                                  \
+    }                                                                                                                              \
+    VerifyOrExit((VerifyOrExitCustomRes), (ec))
+
 CHIP_ERROR CASESession::HandleSigma3a(System::PacketBufferHandle && msg)
 {
     MATTER_TRACE_SCOPE("HandleSigma3", "CASESession");
-    CHIP_ERROR err = CHIP_NO_ERROR;
+    CHIP_ERROR err                      = CHIP_NO_ERROR;
+    CHIP_ERROR SuccessOrExitCustomError = CHIP_NO_ERROR;
+    bool VerifyOrExitCustomRes          = false;
     System::PacketBufferTLVReader tlvReader;
     TLV::TLVReader decryptedDataTlvReader;
     TLV::TLVType containerType = TLV::kTLVType_Structure;
@@ -1590,92 +1608,101 @@ CHIP_ERROR CASESession::HandleSigma3a(System::PacketBufferHandle && msg)
     ChipLogProgress(SecureChannel, "Received Sigma3 msg");
 
     auto helper = WorkHelper<HandleSigma3Data>::Create(*this, &HandleSigma3b, &CASESession::HandleSigma3c);
-    VerifyOrExit(helper, err = CHIP_ERROR_NO_MEMORY);
+    VerifyOrExitCustom(helper != nullptr, err = CHIP_ERROR_NO_MEMORY);
     {
         auto & data = helper->mData;
 
         {
-            VerifyOrExit(mFabricsTable != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
+            VerifyOrExitCustom(mFabricsTable != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
             const auto * fabricInfo = mFabricsTable->FindFabricWithIndex(mFabricIndex);
-            VerifyOrExit(fabricInfo != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
+            VerifyOrExitCustom(fabricInfo != nullptr, err = CHIP_ERROR_INCORRECT_STATE);
             data.fabricId = fabricInfo->GetFabricId();
         }
 
-        VerifyOrExit(mEphemeralKey != nullptr, err = CHIP_ERROR_INTERNAL);
+        VerifyOrExitCustom(mEphemeralKey != nullptr, err = CHIP_ERROR_INTERNAL);
 
         tlvReader.Init(std::move(msg));
-        SuccessOrExit(err = tlvReader.Next(containerType, TLV::AnonymousTag()));
-        SuccessOrExit(err = tlvReader.EnterContainer(containerType));
+        SuccessOrExitCustom(err = tlvReader.Next(containerType, TLV::AnonymousTag()));
+        SuccessOrExitCustom(err = tlvReader.EnterContainer(containerType));
 
         // Fetch encrypted data
         max_msg_r3_signed_enc_len = TLV::EstimateStructOverhead(Credentials::kMaxCHIPCertLength, Credentials::kMaxCHIPCertLength,
                                                                 data.tbsData3Signature.Length(), kCaseOverheadForFutureTbeData);
 
-        SuccessOrExit(err = tlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_Sigma3_Encrypted3)));
+        SuccessOrExitCustom(err = tlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_Sigma3_Encrypted3)));
 
         msg_r3_encrypted_len_with_tag = tlvReader.GetLength();
 
         // Validate we did not receive a buffer larger than legal
-        VerifyOrExit(msg_r3_encrypted_len_with_tag <= max_msg_r3_signed_enc_len, err = CHIP_ERROR_INVALID_TLV_ELEMENT);
-        VerifyOrExit(msg_r3_encrypted_len_with_tag > CHIP_CRYPTO_AEAD_MIC_LENGTH_BYTES, err = CHIP_ERROR_INVALID_TLV_ELEMENT);
+        VerifyOrExitCustom(msg_r3_encrypted_len_with_tag <= max_msg_r3_signed_enc_len, err = CHIP_ERROR_INVALID_TLV_ELEMENT);
+        VerifyOrExitCustom(msg_r3_encrypted_len_with_tag > CHIP_CRYPTO_AEAD_MIC_LENGTH_BYTES, err = CHIP_ERROR_INVALID_TLV_ELEMENT);
 
-        VerifyOrExit(msg_R3_Encrypted.Alloc(msg_r3_encrypted_len_with_tag), err = CHIP_ERROR_NO_MEMORY);
-        SuccessOrExit(err = tlvReader.GetBytes(msg_R3_Encrypted.Get(), static_cast<uint32_t>(msg_r3_encrypted_len_with_tag)));
+        auto & buff = msg_R3_Encrypted.Alloc(msg_r3_encrypted_len_with_tag);
+        if (!buff)
+        {
+            ChipLogError(SecureChannel, "$$$$$$$ msg_R3_Encrypted.Alloc(msg_r3_encrypted_len_with_tag) $$$$$$$");
+        }
+        VerifyOrExit(buff, err = CHIP_ERROR_NO_MEMORY);
+        SuccessOrExitCustom(err = tlvReader.GetBytes(msg_R3_Encrypted.Get(), static_cast<uint32_t>(msg_r3_encrypted_len_with_tag)));
         msg_r3_encrypted_len = msg_r3_encrypted_len_with_tag - CHIP_CRYPTO_AEAD_MIC_LENGTH_BYTES;
 
         // Step 1
         {
             MutableByteSpan saltSpan(msg_salt);
-            SuccessOrExit(err = ConstructSaltSigma3(ByteSpan(mIPK), saltSpan));
-            SuccessOrExit(err = DeriveSigmaKey(saltSpan, ByteSpan(kKDFSR3Info), sr3k));
+            SuccessOrExitCustom(err = ConstructSaltSigma3(ByteSpan(mIPK), saltSpan));
+            SuccessOrExitCustom(err = DeriveSigmaKey(saltSpan, ByteSpan(kKDFSR3Info), sr3k));
         }
 
-        SuccessOrExit(err = mCommissioningHash.AddData(ByteSpan{ buf, bufLen }));
-
+        SuccessOrExitCustom(err = mCommissioningHash.AddData(ByteSpan{ buf, bufLen }));
         // Step 2 - Decrypt data blob
-        SuccessOrExit(err = AES_CCM_decrypt(msg_R3_Encrypted.Get(), msg_r3_encrypted_len, nullptr, 0,
-                                            msg_R3_Encrypted.Get() + msg_r3_encrypted_len, CHIP_CRYPTO_AEAD_MIC_LENGTH_BYTES,
-                                            sr3k.KeyHandle(), kTBEData3_Nonce, kTBEDataNonceLength, msg_R3_Encrypted.Get()));
-
+        SuccessOrExitCustom(err = AES_CCM_decrypt(msg_R3_Encrypted.Get(), msg_r3_encrypted_len, nullptr, 0,
+                                                  msg_R3_Encrypted.Get() + msg_r3_encrypted_len, CHIP_CRYPTO_AEAD_MIC_LENGTH_BYTES,
+                                                  sr3k.KeyHandle(), kTBEData3_Nonce, kTBEDataNonceLength, msg_R3_Encrypted.Get()));
         decryptedDataTlvReader.Init(msg_R3_Encrypted.Get(), msg_r3_encrypted_len);
         containerType = TLV::kTLVType_Structure;
-        SuccessOrExit(err = decryptedDataTlvReader.Next(containerType, TLV::AnonymousTag()));
-        SuccessOrExit(err = decryptedDataTlvReader.EnterContainer(containerType));
+        SuccessOrExitCustom(err = decryptedDataTlvReader.Next(containerType, TLV::AnonymousTag()));
+        SuccessOrExitCustom(err = decryptedDataTlvReader.EnterContainer(containerType));
 
-        SuccessOrExit(err = decryptedDataTlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_TBEData_SenderNOC)));
-        SuccessOrExit(err = decryptedDataTlvReader.Get(data.initiatorNOC));
+        SuccessOrExitCustom(err = decryptedDataTlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_TBEData_SenderNOC)));
+        SuccessOrExitCustom(err = decryptedDataTlvReader.Get(data.initiatorNOC));
 
-        SuccessOrExit(err = decryptedDataTlvReader.Next());
+        SuccessOrExitCustom(err = decryptedDataTlvReader.Next());
         if (TLV::TagNumFromTag(decryptedDataTlvReader.GetTag()) == kTag_TBEData_SenderICAC)
         {
-            VerifyOrExit(decryptedDataTlvReader.GetType() == TLV::kTLVType_ByteString, err = CHIP_ERROR_WRONG_TLV_TYPE);
-            SuccessOrExit(err = decryptedDataTlvReader.Get(data.initiatorICAC));
-            SuccessOrExit(err = decryptedDataTlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_TBEData_Signature)));
+            VerifyOrExitCustom(decryptedDataTlvReader.GetType() == TLV::kTLVType_ByteString, err = CHIP_ERROR_WRONG_TLV_TYPE);
+            SuccessOrExitCustom(err = decryptedDataTlvReader.Get(data.initiatorICAC));
+            SuccessOrExitCustom(err =
+                                    decryptedDataTlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_TBEData_Signature)));
         }
 
         // Step 4 - Construct Sigma3 TBS Data
         data.msg_r3_signed_len = TLV::EstimateStructOverhead(sizeof(uint16_t), data.initiatorNOC.size(), data.initiatorICAC.size(),
                                                              kP256_PublicKey_Length, kP256_PublicKey_Length);
 
-        VerifyOrExit(data.msg_R3_Signed.Alloc(data.msg_r3_signed_len), err = CHIP_ERROR_NO_MEMORY);
-
-        SuccessOrExit(err = ConstructTBSData(data.initiatorNOC, data.initiatorICAC, ByteSpan(mRemotePubKey, mRemotePubKey.Length()),
-                                             ByteSpan(mEphemeralKey->Pubkey(), mEphemeralKey->Pubkey().Length()),
-                                             data.msg_R3_Signed.Get(), data.msg_r3_signed_len));
-
-        VerifyOrExit(TLV::TagNumFromTag(decryptedDataTlvReader.GetTag()) == kTag_TBEData_Signature,
-                     err = CHIP_ERROR_INVALID_TLV_TAG);
-        VerifyOrExit(data.tbsData3Signature.Capacity() >= decryptedDataTlvReader.GetLength(), err = CHIP_ERROR_INVALID_TLV_ELEMENT);
+        auto & buff1 = data.msg_R3_Signed.Alloc(data.msg_r3_signed_len);
+        if (!buff1)
+        {
+            ChipLogError(SecureChannel, "$$$$$$$ data.msg_R3_Signed.Alloc(data.msg_r3_signed_len) $$$$$$$");
+        }
+        VerifyOrExit(buff1, err = CHIP_ERROR_NO_MEMORY);
+        SuccessOrExitCustom(err = ConstructTBSData(data.initiatorNOC, data.initiatorICAC,
+                                                   ByteSpan(mRemotePubKey, mRemotePubKey.Length()),
+                                                   ByteSpan(mEphemeralKey->Pubkey(), mEphemeralKey->Pubkey().Length()),
+                                                   data.msg_R3_Signed.Get(), data.msg_r3_signed_len));
+        VerifyOrExitCustom(TLV::TagNumFromTag(decryptedDataTlvReader.GetTag()) == kTag_TBEData_Signature,
+                           err = CHIP_ERROR_INVALID_TLV_TAG);
+        VerifyOrExitCustom(data.tbsData3Signature.Capacity() >= decryptedDataTlvReader.GetLength(),
+                           err = CHIP_ERROR_INVALID_TLV_ELEMENT);
         data.tbsData3Signature.SetLength(decryptedDataTlvReader.GetLength());
-        SuccessOrExit(err = decryptedDataTlvReader.GetBytes(data.tbsData3Signature.Bytes(), data.tbsData3Signature.Length()));
+        SuccessOrExitCustom(err = decryptedDataTlvReader.GetBytes(data.tbsData3Signature.Bytes(), data.tbsData3Signature.Length()));
 
         // Prepare for Step 5/6
         {
             MutableByteSpan fabricRCAC{ data.rootCertBuf };
-            SuccessOrExit(err = mFabricsTable->FetchRootCert(mFabricIndex, fabricRCAC));
+            SuccessOrExitCustom(err = mFabricsTable->FetchRootCert(mFabricIndex, fabricRCAC));
             data.fabricRCAC = fabricRCAC;
             // TODO probably should make SetEffectiveTime static and call closer to VerifyCredentials
-            SuccessOrExit(err = SetEffectiveTime());
+            SuccessOrExitCustom(err = SetEffectiveTime());
         }
 
         // Copy remaining needed data into work structure
@@ -1687,20 +1714,20 @@ CHIP_ERROR CASESession::HandleSigma3a(System::PacketBufferHandle && msg)
             // copies in msg_R3_signed, which is staying around
             TLV::TLVReader signedDataTlvReader;
             signedDataTlvReader.Init(data.msg_R3_Signed.Get(), data.msg_r3_signed_len);
-            SuccessOrExit(err = signedDataTlvReader.Next(TLV::kTLVType_Structure, TLV::AnonymousTag()));
-            SuccessOrExit(err = signedDataTlvReader.EnterContainer(containerType));
-
-            SuccessOrExit(err = signedDataTlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_TBSData_SenderNOC)));
-            SuccessOrExit(err = signedDataTlvReader.Get(data.initiatorNOC));
+            SuccessOrExitCustom(err = signedDataTlvReader.Next(TLV::kTLVType_Structure, TLV::AnonymousTag()));
+            SuccessOrExitCustom(err = signedDataTlvReader.EnterContainer(containerType));
+            SuccessOrExitCustom(err = signedDataTlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_TBSData_SenderNOC)));
+            SuccessOrExitCustom(err = signedDataTlvReader.Get(data.initiatorNOC));
 
             if (!data.initiatorICAC.empty())
             {
-                SuccessOrExit(err = signedDataTlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_TBSData_SenderICAC)));
-                SuccessOrExit(err = signedDataTlvReader.Get(data.initiatorICAC));
+                SuccessOrExitCustom(
+                    err = signedDataTlvReader.Next(TLV::kTLVType_ByteString, TLV::ContextTag(kTag_TBSData_SenderICAC)));
+                SuccessOrExitCustom(err = signedDataTlvReader.Get(data.initiatorICAC));
             }
         }
 
-        SuccessOrExit(err = helper->ScheduleWork());
+        SuccessOrExitCustom(err = helper->ScheduleWork());
         mHandleSigma3Helper = helper;
         mExchangeCtxt->WillSendMessage();
         mState = State::kHandleSigma3Pending;
@@ -1741,22 +1768,24 @@ CHIP_ERROR CASESession::HandleSigma3b(HandleSigma3Data & data, bool & cancel)
 
 CHIP_ERROR CASESession::HandleSigma3c(HandleSigma3Data & data, CHIP_ERROR status)
 {
-    CHIP_ERROR err = CHIP_NO_ERROR;
+    CHIP_ERROR err                      = CHIP_NO_ERROR;
+    CHIP_ERROR SuccessOrExitCustomError = CHIP_NO_ERROR;
+    bool VerifyOrExitCustomRes          = false;
 
-    VerifyOrExit(mState == State::kHandleSigma3Pending, err = CHIP_ERROR_INCORRECT_STATE);
+    VerifyOrExitCustom(mState == State::kHandleSigma3Pending, err = CHIP_ERROR_INCORRECT_STATE);
 
-    SuccessOrExit(err = status);
+    SuccessOrExitCustom(err = status);
 
     mPeerNodeId = data.initiatorNodeId;
 
     {
         MutableByteSpan messageDigestSpan(mMessageDigest);
-        SuccessOrExit(err = mCommissioningHash.Finish(messageDigestSpan));
+        SuccessOrExitCustom(err = mCommissioningHash.Finish(messageDigestSpan));
     }
 
     // Retrieve peer CASE Authenticated Tags (CATs) from peer's NOC.
     {
-        SuccessOrExit(err = ExtractCATsFromOpCert(data.initiatorNOC, mPeerCATs));
+        SuccessOrExitCustom(err = ExtractCATsFromOpCert(data.initiatorNOC, mPeerCATs));
     }
 
     if (mSessionResumptionStorage != nullptr)
