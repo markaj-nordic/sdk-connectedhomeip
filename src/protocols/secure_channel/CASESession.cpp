@@ -1742,6 +1742,14 @@ exit:
     return err;
 }
 
+#define ReturnErrorOnFailureCustom(expr)                                                                                           \
+    ReturnErrorOnFailureCustomError = expr;                                                                                        \
+    if (ReturnErrorOnFailureCustomError != CHIP_NO_ERROR)                                                                          \
+    {                                                                                                                              \
+        ChipLogError(SecureChannel, "$$$$$$$ " #expr " $$$$$$$");                                                                  \
+    }                                                                                                                              \
+    ReturnErrorOnFailure(ReturnErrorOnFailureCustomError)
+
 CHIP_ERROR CASESession::HandleSigma3b(HandleSigma3Data & data, bool & cancel)
 {
     // Step 5/6
@@ -1750,8 +1758,10 @@ CHIP_ERROR CASESession::HandleSigma3b(HandleSigma3Data & data, bool & cancel)
     CompressedFabricId unused;
     FabricId initiatorFabricId;
     P256PublicKey initiatorPublicKey;
-    ReturnErrorOnFailure(FabricTable::VerifyCredentials(data.initiatorNOC, data.initiatorICAC, data.fabricRCAC, data.validContext,
-                                                        unused, initiatorFabricId, data.initiatorNodeId, initiatorPublicKey));
+    CHIP_ERROR ReturnErrorOnFailureCustomError = CHIP_NO_ERROR;
+    ReturnErrorOnFailureCustom(FabricTable::VerifyCredentials(data.initiatorNOC, data.initiatorICAC, data.fabricRCAC,
+                                                              data.validContext, unused, initiatorFabricId, data.initiatorNodeId,
+                                                              initiatorPublicKey));
     VerifyOrReturnError(data.fabricId == initiatorFabricId, CHIP_ERROR_INVALID_CASE_PARAMETER);
 
     // TODO - Validate message signature prior to validating the received operational credentials.
@@ -1760,7 +1770,7 @@ CHIP_ERROR CASESession::HandleSigma3b(HandleSigma3Data & data, bool & cancel)
     //        current flow of code, a malicious node can trigger a DoS style attack on the device.
     //        The same change should be made in Sigma2 processing.
     // Step 7 - Validate Signature
-    ReturnErrorOnFailure(
+    ReturnErrorOnFailureCustom(
         initiatorPublicKey.ECDSA_validate_msg_signature(data.msg_R3_Signed.Get(), data.msg_r3_signed_len, data.tbsData3Signature));
 
     return CHIP_NO_ERROR;

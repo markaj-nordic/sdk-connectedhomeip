@@ -44,6 +44,7 @@
 #include <lib/support/SafeInt.h>
 #include <lib/support/ScopedBuffer.h>
 #include <lib/support/TimeUtils.h>
+#include <platform/DiagnosticDataProvider.h>
 #include <protocols/Protocols.h>
 
 namespace chip {
@@ -70,9 +71,32 @@ ChipCertificateSet::~ChipCertificateSet()
 CHIP_ERROR ChipCertificateSet::Init(uint8_t maxCertsArraySize)
 {
     CHIP_ERROR err = CHIP_NO_ERROR;
+    uint64_t currentHeapFree{};
+    uint64_t currentHeapUsed{};
+    uint64_t currentHeapHighWatermark{};
 
     VerifyOrExit(maxCertsArraySize > 0, err = CHIP_ERROR_INVALID_ARGUMENT);
+
+    chip::DeviceLayer::GetDiagnosticDataProviderImpl().GetCurrentHeapFree(currentHeapFree);
+    chip::DeviceLayer::GetDiagnosticDataProviderImpl().GetCurrentHeapUsed(currentHeapUsed);
+    chip::DeviceLayer::GetDiagnosticDataProviderImpl().GetCurrentHeapHighWatermark(currentHeapHighWatermark);
+
+    ChipLogProgress(SecureChannel,
+                    "$$$$$$ ChipCertificateSet::Init: heap before alloc: free: %lld, used: %lld, maxUsed:%lld $$$$$$",
+                    currentHeapFree, currentHeapUsed, currentHeapHighWatermark);
+
     mCerts = reinterpret_cast<ChipCertificateData *>(chip::Platform::MemoryAlloc(sizeof(ChipCertificateData) * maxCertsArraySize));
+
+    chip::DeviceLayer::GetDiagnosticDataProviderImpl().GetCurrentHeapFree(currentHeapFree);
+    chip::DeviceLayer::GetDiagnosticDataProviderImpl().GetCurrentHeapUsed(currentHeapUsed);
+    chip::DeviceLayer::GetDiagnosticDataProviderImpl().GetCurrentHeapHighWatermark(currentHeapHighWatermark);
+    ChipLogProgress(SecureChannel, "$$$$$$ ChipCertificateSet::Init: heap after alloc: free: %lld, used: %lld, maxUsed:%lld $$$$$$",
+                    currentHeapFree, currentHeapUsed, currentHeapHighWatermark);
+
+    if (mCerts == nullptr)
+    {
+        ChipLogError(SecureChannel, "$$$$$$$ ChipCertificateSet::Init: cannot allocate certificate data $$$$$$$");
+    }
     VerifyOrExit(mCerts != nullptr, err = CHIP_ERROR_NO_MEMORY);
 
     mMaxCerts            = maxCertsArraySize;
@@ -161,6 +185,10 @@ CHIP_ERROR ChipCertificateSet::LoadCert(TLVReader & reader, BitFlags<CertDecodeF
     }
 
     // Verify we have room for the new certificate.
+    if (mCertCount >= mMaxCerts)
+    {
+        ChipLogError(SecureChannel, "$$$$$$$ Certificate count exceeds the maximum allowed number $$$$$$$");
+    }
     VerifyOrReturnError(mCertCount < mMaxCerts, CHIP_ERROR_NO_MEMORY);
 
     new (&mCerts[mCertCount]) ChipCertificateData(cert);

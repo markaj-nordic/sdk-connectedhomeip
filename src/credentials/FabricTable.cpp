@@ -353,6 +353,14 @@ CHIP_ERROR FabricTable::VerifyCredentials(FabricIndex fabricIndex, const ByteSpa
                              outRootPublicKey);
 }
 
+#define ReturnErrorOnFailureCustom(expr)                                                                                           \
+    ReturnErrorOnFailureCustomError = expr;                                                                                        \
+    if (ReturnErrorOnFailureCustomError != CHIP_NO_ERROR)                                                                          \
+    {                                                                                                                              \
+        ChipLogError(SecureChannel, "$$$$$$$ " #expr " $$$$$$$");                                                                  \
+    }                                                                                                                              \
+    ReturnErrorOnFailure(ReturnErrorOnFailureCustomError)
+
 CHIP_ERROR FabricTable::VerifyCredentials(const ByteSpan & noc, const ByteSpan & icac, const ByteSpan & rcac,
                                           ValidationContext & context, CompressedFabricId & outCompressedFabricId,
                                           FabricId & outFabricId, NodeId & outNodeId, Crypto::P256PublicKey & outNocPubkey,
@@ -362,19 +370,20 @@ CHIP_ERROR FabricTable::VerifyCredentials(const ByteSpan & noc, const ByteSpan &
     //        The certificate chain construction and verification is a compute and memory intensive operation.
     //        It can be optimized by not loading certificate (i.e. rcac) that's local and implicitly trusted.
     //        The FindValidCert() algorithm will need updates to achieve this refactor.
-    constexpr uint8_t kMaxNumCertsInOpCreds = 3;
+    constexpr uint8_t kMaxNumCertsInOpCreds    = 3;
+    CHIP_ERROR ReturnErrorOnFailureCustomError = CHIP_NO_ERROR;
 
     ChipCertificateSet certificates;
-    ReturnErrorOnFailure(certificates.Init(kMaxNumCertsInOpCreds));
+    ReturnErrorOnFailureCustom(certificates.Init(kMaxNumCertsInOpCreds));
 
-    ReturnErrorOnFailure(certificates.LoadCert(rcac, BitFlags<CertDecodeFlags>(CertDecodeFlags::kIsTrustAnchor)));
+    ReturnErrorOnFailureCustom(certificates.LoadCert(rcac, BitFlags<CertDecodeFlags>(CertDecodeFlags::kIsTrustAnchor)));
 
     if (!icac.empty())
     {
-        ReturnErrorOnFailure(certificates.LoadCert(icac, BitFlags<CertDecodeFlags>(CertDecodeFlags::kGenerateTBSHash)));
+        ReturnErrorOnFailureCustom(certificates.LoadCert(icac, BitFlags<CertDecodeFlags>(CertDecodeFlags::kGenerateTBSHash)));
     }
 
-    ReturnErrorOnFailure(certificates.LoadCert(noc, BitFlags<CertDecodeFlags>(CertDecodeFlags::kGenerateTBSHash)));
+    ReturnErrorOnFailureCustom(certificates.LoadCert(noc, BitFlags<CertDecodeFlags>(CertDecodeFlags::kGenerateTBSHash)));
 
     const ChipDN & nocSubjectDN              = certificates.GetLastCert()[0].mSubjectDN;
     const CertificateKeyId & nocSubjectKeyId = certificates.GetLastCert()[0].mSubjectKeyId;
@@ -382,9 +391,9 @@ CHIP_ERROR FabricTable::VerifyCredentials(const ByteSpan & noc, const ByteSpan &
     const ChipCertificateData * resultCert = nullptr;
     // FindValidCert() checks the certificate set constructed by loading noc, icac and rcac.
     // It confirms that the certs link correctly (noc -> icac -> rcac), and have been correctly signed.
-    ReturnErrorOnFailure(certificates.FindValidCert(nocSubjectDN, nocSubjectKeyId, context, &resultCert));
+    ReturnErrorOnFailureCustom(certificates.FindValidCert(nocSubjectDN, nocSubjectKeyId, context, &resultCert));
 
-    ReturnErrorOnFailure(ExtractNodeIdFabricIdFromOpCert(certificates.GetLastCert()[0], &outNodeId, &outFabricId));
+    ReturnErrorOnFailureCustom(ExtractNodeIdFabricIdFromOpCert(certificates.GetLastCert()[0], &outNodeId, &outFabricId));
 
     CHIP_ERROR err;
     FabricId icacFabricId = kUndefinedFabricId;
@@ -420,7 +429,7 @@ CHIP_ERROR FabricTable::VerifyCredentials(const ByteSpan & noc, const ByteSpan &
         MutableByteSpan compressedFabricIdSpan(compressedFabricIdBuf);
         P256PublicKey rootPubkey(certificates.GetCertSet()[0].mPublicKey);
 
-        ReturnErrorOnFailure(GenerateCompressedFabricId(rootPubkey, outFabricId, compressedFabricIdSpan));
+        ReturnErrorOnFailureCustom(GenerateCompressedFabricId(rootPubkey, outFabricId, compressedFabricIdSpan));
 
         // Decode compressed fabric ID accounting for endianness, as GenerateCompressedFabricId()
         // returns a binary buffer and is agnostic of usage of the output as an integer type.
